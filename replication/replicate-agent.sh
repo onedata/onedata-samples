@@ -14,7 +14,7 @@ Options:
   --seq              space change event sequence id from which you will start receiving events
   --save-seq         when the script is interputed, save the sequence number of last recieved event to the file ./last_seq
                      when starting the script try to read ./last_seq for the sequence number
-  --log-steam        log raw stream of changes to stream.log
+  --log-stream        log raw stream of changes to stream.log
   --sn               space name
   --sp               url or name of replicaton source oneprovider
   -t                 onezone API token
@@ -26,35 +26,35 @@ Examples:
 Can be run without any arguments, then all needed values are taken from your ~/.kube/config:
 
 The simplest way to initalize the replication of data on space 'par-n-lis-c' from example providers 'krakow' to destination provider 'paris': 
-${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \
-         --sp develop-oneprovider-krakow.develop.svc.dev.onedata.uk.to \
-         --dp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \
-         --sn par-n-lis-c \
+${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \\
+                   --sp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \\
+                   --dp develop-oneprovider-lisbon.develop.svc.dev.onedata.uk.to \\
+                   --sn par-n-lis-c \\
          -t MDAxNWxvY2F0...
 
 If user has 2 spaces named 'par-n-lis-c' the script will fail. The solution is to provider space id instead of space name:
-${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \
-         --sp develop-oneprovider-krakow.develop.svc.dev.onedata.uk.to \
-         --dp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \
-         --sid ced4b8030a033ee22eaad8c79fc519b1 \
+${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \\
+                   --sp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \\
+                   --dp develop-oneprovider-lisbon.develop.svc.dev.onedata.uk.to \\
+                   --sid ced4b8030a033ee22eaad8c79fc519b1 \\
          -t MDAxNWxvY2F0....
 
 By default script starts replication by monitoring latest changes in the space. You can controll it by providing seq number.
-${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \
-         --sp develop-oneprovider-krakow.develop.svc.dev.onedata.uk.to \
-         --dp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \
-         --sn par-n-lis-c \
-         --seq 100 \
+${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \\
+                   --sp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \\
+                   --dp develop-oneprovider-lisbon.develop.svc.dev.onedata.uk.to \\
+                   --sn par-n-lis-c \\
+                   --seq 100 \\
          -t MDAxNWxvY2F0...
 
 The above command will start replication process by getting all changes since the change numbered as 100.
 
 To run a continous replication you can save the last received seq number upon scrip exit:
-${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \
-         --sp develop-oneprovider-krakow.develop.svc.dev.onedata.uk.to \
-         --dp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \
-         --sid ced4b8030a033ee22eaad8c79fc519b1 \
-         --save-seq
+${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \\
+                   --sp develop-oneprovider-paris.develop.svc.dev.onedata.uk.to \\
+                   --dp develop-oneprovider-lisbon.develop.svc.dev.onedata.uk.to \\
+                   --sid ced4b8030a033ee22eaad8c79fc519b1 \\
+                   --save-seq \\
          -t MDAxNWxvY2F0...
 
 When run next time, above command will read the last sequence number from the file ./last_seq.
