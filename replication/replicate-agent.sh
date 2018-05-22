@@ -2,7 +2,7 @@
 
 usage() {
 cat <<EOF
-This script deploys a landscape and allows for overriding docker images: 
+This script helps to preform data replication between two Oneproviders.
 
 ${0##*/} --oz <onezone url> { --sn <space name> | --sid <space id> } --sp <provider url or name> --dp <provider url or name>
          -t <token> [ --log-stream ] [ --save-seq ] [ --seq <change number> ] [ -env ]
@@ -21,9 +21,6 @@ Options:
   --env              try to get all needed parameters from the environment
 
 Examples:
-
-
-Can be run without any arguments, then all needed values are taken from your ~/.kube/config:
 
 The simplest way to initalize the replication of data on space 'par-n-lis-c' from example providers 'krakow' to destination provider 'paris': 
 ${0##*/} --oz develop-onezone.develop.svc.dev.onedata.uk.to \\
