@@ -71,6 +71,17 @@ EOF
 exit 1
 }
 
+aliases() {
+  case $( uname -s ) in
+    Linux)
+          _stdbuf=stdbuf
+          ;;
+    Darwin)
+          _stdbuf=gstdbuf
+          ;;
+  esac
+}
+
 strip_url() { 
   local url=$1
   url=${1#https://}
@@ -291,7 +302,7 @@ EOF
   fi
 
 
-  log_steam_cmd() { if (( log_stream )); then gstdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
+  log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
 
   _curl=(curl -k -N --tlsv1.2 --show-error --silent -H "X-Auth-Token:$api_token")
   while IFS=$'\t' read seq file_name file_path file_id ; do
@@ -306,8 +317,9 @@ EOF
       (( seq++ ))
       echo "$seq" > last_seq
     fi
-  done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" | log_steam_cmd | gstdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "\(.seq)\t\(.name)\t\(.file_path)\t\(.file_id)"' )
+  done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "\(.seq)\t\(.name)\t\(.file_path)\t\(.file_id)"' )
 
 }
 
+aliases
 main "$@"
