@@ -19,6 +19,9 @@ Options:
   --sp               url or name of replicaton source oneprovider
   -t                 onezone API token
   --env              try to get all needed parameters from the environment
+  --defer-time       how long (in seconds) to wait before scheduling transfer of a modified file since the last activity on it.
+                     Default: 180 seconds
+  --debug            additional data transfer information
 
 Examples:
 
@@ -75,9 +78,11 @@ aliases() {
   case $( uname -s ) in
     Linux)
           _stdbuf=stdbuf
+          _date=date
           ;;
     Darwin)
           _stdbuf=gstdbuf
+          _date=gdate
           ;;
   esac
 }
@@ -100,6 +105,8 @@ main() {
   # Default values
   seq_save=0
   log_stream=0
+  defer_time=180
+  debug=0
 
   while (( $# )); do
       case $1 in
@@ -142,6 +149,13 @@ main() {
           -t)
               api_token=$2
               shift
+              ;;
+          --defer-time)
+              defer_time=$2
+              shift
+              ;;
+          --debug)
+              debug=1
               ;;
           -?*|*)
               printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
@@ -281,42 +295,85 @@ EOF
 
 EOF
 
-  if [[ -z ${last_seq_number+x } ]]; then 
-    if (( seq_save )); then
-      if [[ -f ./last_seq ]]; then
-        last_seq_number=$(cat ./last_seq)
-      fi
-    fi
-  fi
-  if [[ "$last_seq_number" != "" ]] ; then
-    if [[ $last_seq_number =~ ^[0-9]+$ ]] ; then
-        last_seq="last_seq=$last_seq_number"
-        printf "    Requesting stream of changes from the event number <$last_seq_number>:\n\n"
-    else
-      echo "WARNING: Last sequence number <$last_seq_number> does not match regexp ^[0-9]+$, ommiting."
-    fi
-  else
-       printf "    Subscribing to the steam of changes:\n\n"
-  fi
-
 
   log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
+  
+  check_cache() {
+      while read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
+        echo "Requested file transfer: <$cfile_name>"
+        echo "  change stream number: <$cseq>"
+        echo "  path: <$cfile_path>"
+        echo "  id: <$cfile_id>"
+        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas/$cfile_path?provider_id=$targert_provider_id" | jq -r ".transferId")    
+        echo "  replication transfer id: $transfer"
+        echo ""
+        gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+      done < <(awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+  }
 
+  changes_cache=cache.db
+  touch "$changes_cache"
+  last_seq_func_verbose=1
   _curl=(curl -k -N --tlsv1.2 --show-error --silent -H "X-Auth-Token:$api_token")
-  while IFS=$'\t' read seq file_name file_path file_id ; do
-    echo "Changed file: <$file_name>"
-    echo "  change stream number: <$seq>"
-    echo "  path: <$file_path>"
-    echo "  id: <$file_id>"
-    transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas/$file_path?provider_id=$targert_provider_id" | jq -r ".transferId")
-    echo "  replication transfer id: $transfer"
-    echo ""
-    if (( seq_save )); then
-      (( seq++ ))
-      echo "$seq" > last_seq
-    fi
-  done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "\(.seq)\t\(.name)\t\(.file_path)\t\(.file_id)"' )
 
+  last_seq_func() {
+    if [[ -z ${last_seq_number+x } ]]; then 
+      if (( seq_save )); then
+        if [[ -f ./last_seq ]]; then
+          last_seq_number=$(cat ./last_seq)
+        fi
+      fi
+    fi
+    if [[ "$last_seq_number" != "" ]] ; then
+      if [[ $last_seq_number =~ ^[0-9]+$ ]] ; then
+          last_seq="last_seq=$last_seq_number"
+          [[ $last_seq_func_verbose -eq 1 ]] && printf "    Requesting stream of changes from the event number <$last_seq_number>:\n\n"
+      else
+        [[ $last_seq_func_verbose -eq 1 ]] && echo "WARNING: Last sequence number <$last_seq_number> does not match regexp ^[0-9]+$, ommiting."
+      fi
+    else
+        [[ $last_seq_func_verbose -eq 1 ]] && printf "    Subscribing to the stream of changes:\n\n"
+    fi
+  }
+
+  while true ; do
+    last_seq_func
+    check_cache
+    while IFS=$'\t' read seq file_name file_path file_id ; do
+      date_cache="$($_date --date="$defer_time seconds ago" +%s)"
+      if ! gawk -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
+          date_now="$($_date +%s)"
+          change=$(printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$date_now" "$file_path" "$seq" "$file_name" "$file_id")
+          echo "$change" >> "$changes_cache"
+          if [[ $debug -eq 1 ]]; then
+            echo "New file added to transfer cache: <$file_name>"
+            echo "  change stream number: <$seq>"
+            echo "  path: <$file_path>"
+            echo "  id: <$file_id>"
+            echo "  If no changes to this file occures for $defer_time [s] its transfer will be enqueued."
+            echo ""
+          fi
+          gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+      else
+          if [[ $debug -eq 1 ]]; then
+            echo "Updated cached file trasnfer: <$file_name>"
+            echo "  change stream number: <$seq>"
+            echo "  path: <$file_path>"
+            echo "  id: <$file_id>"
+            echo "  If no changes to this file occures for $defer_time [s] its transfer will be enqueued."
+            echo ""
+          fi
+          gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+      fi
+      check_cache
+      if (( seq_save )); then
+        (( seq++ ))
+        echo "$seq" > last_seq
+      fi
+    done < <(${_curl[@]} --max-time "$defer_time" "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "\(.seq)\t\(.name)\t\(.file_path)\t\(.file_id)"' )
+
+    last_seq_func_verbose=0
+  done
 }
 
 aliases
