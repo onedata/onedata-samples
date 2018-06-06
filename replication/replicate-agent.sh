@@ -131,11 +131,9 @@ main() {
               ;;
           --seq-save)
               seq_save=1
-              shift
               ;;
           --log-stream)
               log_stream=1
-              shift
               ;;
           --sn)
               source_space_name=$2
