@@ -79,10 +79,12 @@ aliases() {
     Linux)
           _stdbuf=stdbuf
           _date=date
+          _awk=gawk
           ;;
     Darwin)
           _stdbuf=gstdbuf
           _date=gdate
+          _awk=gawk
           ;;
   esac
 }
@@ -307,8 +309,8 @@ EOF
         transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas/$cfile_path?provider_id=$targert_provider_id" | jq -r ".transferId")    
         echo "  replication transfer id: $transfer"
         echo ""
-        gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
-      done < <(awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+        $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+      done < <($_awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
   }
 
   changes_cache=cache.db
@@ -341,7 +343,7 @@ EOF
     check_cache
     while IFS=$'\t' read seq file_name file_path file_id ; do
       date_cache="$($_date --date="$defer_time seconds ago" +%s)"
-      if ! gawk -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
+      if ! $_awk -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
           date_now="$($_date +%s)"
           change=$(printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$date_now" "$file_path" "$seq" "$file_name" "$file_id")
           echo "$change" >> "$changes_cache"
@@ -353,7 +355,7 @@ EOF
             echo "  If no changes to this file occures for $defer_time [s] its transfer will be enqueued."
             echo ""
           fi
-          gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+          $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
       else
           if [[ $debug -eq 1 ]]; then
             echo "Updated cached file trasnfer: <$file_name>"
@@ -363,7 +365,7 @@ EOF
             echo "  If no changes to this file occures for $defer_time [s] its transfer will be enqueued."
             echo ""
           fi
-          gawk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+          $_awk -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
       fi
       check_cache
       if (( seq_save )); then
