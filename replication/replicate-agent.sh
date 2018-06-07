@@ -98,6 +98,17 @@ strip_url() {
   echo "$url"
 }
 
+command_exists() {
+  command -v "$@" > /dev/null 2>&1
+}
+
+check_dependency() {
+  if ! command_exists $1 ; then
+    echo "Error: please install command: $1"
+    exit 1
+  fi
+}
+
 main() {
 
   if (( ! $# )); then
@@ -379,4 +390,8 @@ EOF
 }
 
 aliases
+check_dependency "jq"
+check_dependency $_stdbuf
+check_dependency $_date
+check_dependency $_awk
 main "$@"
