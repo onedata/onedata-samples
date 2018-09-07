@@ -14,7 +14,8 @@ Options:
   --seq              space change event sequence id from which you will start receiving events
   --save-seq         when the script is interputed, save the sequence number of last recieved event to the file ./last_seq
                      when starting the script try to read ./last_seq for the sequence number
-  --log-stream        log raw stream of changes to stream.log
+  --log-stream       log raw stream of changes to stream.log
+  --log-replicas     log raw stream of requests and responses to the replicasion API replicas.log
   --sn               space name
   --sp               url or name of replicaton source oneprovider
   -t                 onezone API token
@@ -154,6 +155,9 @@ main() {
               ;;
           --log-stream)
               log_stream=1
+              ;;
+          --log-replicas)
+              log_replicas=1
               ;;
           --sn)
               source_space_name=$2
@@ -310,6 +314,7 @@ EOF
 
 
   log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
+  log_replicas_cmd() { if (( log_replicas )); then $_stdbuf -i0 -o0 -e0 tee -a replicas.log; else cat; fi; }
   
   check_cache() {
       while IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
@@ -317,10 +322,11 @@ EOF
         echo "  change stream number: <$cseq>"
         echo "  path: <$cfile_path>"
         echo "  id: <$cfile_id>"
-        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | jq -r ".transferId")
+        echo "${_curl[@]} -H 'Content-type: application/json' -X POST \"https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id\"" | log_replicas_cmd > /dev/null
+        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | xargs -0 printf "%s\n" | log_replicas_cmd | jq -r ".transferId")
         echo "  replication transfer id: $transfer"
         echo ""
-        if [ "$transfer" != "" ];then
+        if [ "$transfer" != "" ] && [ "$transfer" != "null" ]; then
           $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
         else
           echo "No trasnfer id recived. This request will be retried." ;
