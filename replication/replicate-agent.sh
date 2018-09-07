@@ -312,7 +312,7 @@ EOF
   log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
   
   check_cache() {
-      while read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
+      while IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
         echo "Requested file transfer: <$cfile_name>"
         echo "  change stream number: <$cseq>"
         echo "  path: <$cfile_path>"
@@ -357,6 +357,15 @@ EOF
     last_seq_func
     check_cache
     while IFS=$'\t' read seq file_name file_path file_id ; do
+      echo "raw: <$seq> <$file_name> <$file_path> <$file_id>"
+      seq="${seq#seq=}"
+      file_name="${file_name#name=}"
+      file_path="${file_path#file_path=}"
+      if [ "$file_path" = "" ] ; then
+        file_path="MISSING_FILE_PATH"
+      fi
+      file_id="${file_id#file_id=}"
+      echo "parsed: $seq $file_name $file_path $file_id"
       date_cache="$($_date --date="$defer_time seconds ago" +%s)"
       if ! $_awk -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
           date_now="$($_date +%s)"
@@ -387,7 +396,7 @@ EOF
         (( seq++ ))
         echo "$seq" > last_seq
       fi
-    done < <(${_curl[@]} --max-time "$defer_time" "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "\(.seq)\t\(.name)\t\(.file_path)\t\(.file_id)"' )
+    done < <(${_curl[@]} --max-time "$defer_time" "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
 
     last_seq_func_verbose=0
   done
