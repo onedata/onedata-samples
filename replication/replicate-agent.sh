@@ -320,7 +320,11 @@ EOF
         transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas/$cfile_path?provider_id=$targert_provider_id" | jq -r ".transferId")    
         echo "  replication transfer id: $transfer"
         echo ""
-        $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+        if [ "$transfer" != "" ];then
+          $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+        else
+          echo "No trasnfer id recived. This request will be retried." ;
+        fi
       done < <($_awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
   }
 
