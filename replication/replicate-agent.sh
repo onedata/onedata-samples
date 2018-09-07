@@ -317,7 +317,7 @@ EOF
         echo "  change stream number: <$cseq>"
         echo "  path: <$cfile_path>"
         echo "  id: <$cfile_id>"
-        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas/$cfile_path?provider_id=$targert_provider_id" | jq -r ".transferId")    
+        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | jq -r ".transferId")
         echo "  replication transfer id: $transfer"
         echo ""
         if [ "$transfer" != "" ];then
