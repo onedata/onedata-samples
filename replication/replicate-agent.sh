@@ -12,7 +12,7 @@ Options:
   --oz               onezone url
   --sid              instead of space name you can supply space id. space id takes precedence over --sn
   --seq              space change event sequence id from which you will start receiving events
-  --save-seq         when the script is interputed, save the sequence number of last recieved event to the file ./last_seq
+  --seq-save         when the script is interputed, save the sequence number of last recieved event to the file ./last_seq
                      when starting the script try to read ./last_seq for the sequence number
   --log-stream       log raw stream of changes to stream.log
   --log-replicas     log raw stream of requests and responses to the replicasion API replicas.log
