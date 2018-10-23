@@ -402,7 +402,7 @@ EOF
         (( seq++ ))
         echo "$seq" > last_seq
       fi
-    done < <(${_curl[@]} --max-time "$defer_time" "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
+    done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
 
     last_seq_func_verbose=0
   done
