@@ -14,6 +14,7 @@ Options:
   --seq              space change event sequence id from which you will start receiving events
   --seq-save         when the script is interputed, save the sequence number of last recieved event to the file ./last_seq
                      when starting the script try to read ./last_seq for the sequence number
+  --cache-freq       how often should cache file be check for pending replication requests (default: 2 seconds)
   --log-stream       log raw stream of changes to stream.log
   --log-replicas     log raw stream of requests and responses to the replicasion API replicas.log
   --sn               space name
@@ -66,7 +67,7 @@ export  onezone_url="develop-onezone.develop.svc.dev.onedata.uk.to"
 export  source_space_name="par-n-lis-c"
 export  source_provider="develop-oneprovider-paris.develop.svc.dev.onedata.uk.to"
 export  target_provider="develop-oneprovider-lisbon.develop.svc.dev.onedata.uk.to"
-export  api_token="MDAxNWxvY2F00aW9uIG9uZXpvbmUKMDAzMGlkZW500aWZpZXIgN2YwMGU1ODkwYzg5ZjAyYjhhMmE3YWVhMjc00NDhjOTkKMDAxYWNpZCB00aW1lIDwgMTU1MTM1NTY5NwowMDJmc2lnbmF00dXJlIAXeTetBfdvGydV5TGrJynEeaQgMgS7LH1IUPeti700qXCg"
+export  api_token="MDAxNWxvY2F00aW9uIG9uZXpvbmUKMDAzMGlkZW500aWZpZXIgNDgzNzRhNzE00YjhiNTQ1YWFkYTA4ZDEzZWVlNzBhM2IKMDAxYWNpZCB00aW1lIDwgMTU3MTQwNDQyNwowMDJmc2lnbmF00dXJlIGp4es01iyU02j1A1Jm61W5XzuCsc3nvFD7h7OmBfWswIeCg"
 
 and source it. Make sure your variables are present in env. You can now run replication using command:
 ${0##*/} --env
@@ -120,6 +121,7 @@ main() {
   seq_save=0
   log_stream=0
   defer_time=180
+  cache_scan_frequency=2
   debug=0
 
   while (( $# )); do
@@ -152,6 +154,10 @@ main() {
               ;;
           --seq-save)
               seq_save=1
+              ;;
+          --cache-freq)
+              cache_scan_frequency=$2
+              shift
               ;;
           --log-stream)
               log_stream=1
@@ -317,6 +323,8 @@ EOF
   log_replicas_cmd() { if (( log_replicas )); then $_stdbuf -i0 -o0 -e0 tee -a replicas.log; else cat; fi; }
   
   check_cache() {
+    while true ; do
+      sleep $cache_scan_frequency ;
       while IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
         echo "Requested file transfer: <$cfile_name>"
         echo "  change stream number: <$cseq>"
@@ -332,6 +340,7 @@ EOF
           echo "No trasnfer id recived. This request will be retried." ;
         fi
       done < <($_awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+    done
   }
 
   changes_cache=cache.db
@@ -359,9 +368,9 @@ EOF
     fi
   }
 
+  check_cache &
   while true ; do
     last_seq_func
-    check_cache
     while IFS=$'\t' read seq file_name file_path file_id ; do
       echo "raw: <$seq> <$file_name> <$file_path> <$file_id>"
       seq="${seq#seq=}"
@@ -397,7 +406,6 @@ EOF
           fi
           $_awk -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
       fi
-      check_cache
       if (( seq_save )); then
         (( seq++ ))
         echo "$seq" > last_seq
