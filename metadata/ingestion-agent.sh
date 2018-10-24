@@ -322,7 +322,7 @@ EOF
         if [ "$metadata" != "" ]; then
           cat "queue/${queue_name}.meta" | log_metadata_cmd | ${_curl[@]} -H "Content-Type: application/json" -X PUT -d @- "https://$source_provider/api/v3/oneprovider/metadata-id/$cfile_id?metadata_type=json"
           # if [ "$transfer" != "" ] && [ "$transfer" != "null" ]; then
-            $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+            $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
           # else
           #   echo "No trasnfer id recived. This request will be retried." ;
           # fi
@@ -331,7 +331,7 @@ EOF
           echo "Failed to retrive metadata of file $cfile_path. Will try again." ;
         fi
         printf "%s\t%s\n" "$cfile_id" "$cfile_path" >> "$IGNORE_FILES_INDEX"
-      done < <($_awk -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+      done < <($_awk -F $'\t' -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
     done
   }
 
@@ -389,7 +389,7 @@ EOF
           file_id="${file_id#file_id=}"
           echo "parsed: $seq $file_name $file_path $file_id"
           date_cache="$($_date --date="$defer_time seconds ago" +%s)"
-          if ! $_awk -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
+          if ! $_awk -F $'\t' -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
               date_now="$($_date +%s)"
               change=$(printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$date_now" "$file_path" "$seq" "$file_name" "$file_id")
               echo "$change" >> "$changes_cache"
@@ -401,7 +401,7 @@ EOF
                 echo "  If no changes to this file occures for $defer_time [s] its metadata reques will be enqueued."
                 echo ""
               fi
-              $_awk  -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+              $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
           else
               if [[ $debug -eq 1 ]]; then
                 echo "Updated cached file metadata request: <$file_name>"
@@ -411,7 +411,7 @@ EOF
                 echo "  If no changes to this file occures for $defer_time [s] its metadata request will be enqueued."
                 echo ""
               fi
-              $_awk -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
+              $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
           fi
         fi
       fi
