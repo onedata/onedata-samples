@@ -53,8 +53,8 @@ services:
       - $PWD/ingestion-agent.sh:/usr/local/bin/ingestion-agent.sh
 
   metadata-extractor:
-    image: groundnuty/whatever:ctaarchive-v1
-    # image source: https://gitlab.in2p3.fr/Frederic.Gillardo1/ctaarchive/
+    image: gitlab-registry.in2p3.fr/cta-lapp/cta-archive
+    # image source: https://gitlab.in2p3.fr/CTA-LAPP/cta-archive
     stop_signal: SIGUSR1
     entrypoint: 
       - /usr/bin/env
