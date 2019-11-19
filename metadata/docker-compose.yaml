@@ -1,84 +1,25 @@
-version: '3.0'
+version: '2'
 
+# Docker compose for running and development
 services:
-  oneclient:
-    image: onedata/oneclient:${source_oneprovider_version}
-    # image source: https://github.com/onedata/oneclient
+  all:
+    build: .
+    entrypoint: /app/run.sh
+    entrypoint: /usr/bin/env
+    command: sh
+    stdin_open: true
+    tty: true
     privileged: true
-    container_name: oneclient
-    stop_signal: SIGUSR1
-    entrypoint: 
-      - /usr/bin/env
-      - bash
-      - -c
-      - >
-        set -e ;
-        trap "{ umount /mnt/oneclient ; echo Stopping_oneclient  ; }" SIGUSR1;
-        oneclient --force-proxy-io --force-fullblock-read -v 2 /mnt/oneclient ;
-        echo > /monitor/oneclient-ready ;
-        echo "Oneclient ready:" ;
-        ls /mnt/oneclient ;
-        while [ ! -f /monitor/oneclient-can-exit ] ; do sleep 2 ; done ;
     volumes:
-      - /tmp/onedata/:/mnt/oneclient:shared
-      - monitor:/monitor
-    environment:  
-      ONECLIENT_PROVIDER_HOSTNAME: $source_provider
-      ONECLIENT_AUTHORIZATION_TOKEN: $api_token
-      ONECLIENT_NO_CHECK_CERTIFICATE: 'true'
+      # mount local run.py version as well
+      - $PWD/run.py:/app/run-dev.py
+      - /root/hd5:/root/hd5
+    env_file:
+      - .env
 
-  metadata-ingester:
-    image: groundnuty/whatever:ingestion-agent-v4
-    # image source: https://github.com/onedata/onedata-samples/tree/master/metadata
-    container_name: ingester
-    stop_signal: SIGUSR1
-    entrypoint: 
-      - /usr/bin/env
-      - bash
-      - -c
-      - >
-        trap "{ exit 0 ; }" SIGUSR1 ;
-        while [ ! -f /monitor/oneclient-ready ] ; do sleep 1 ; done ;
-        ingestion-agent.sh --env --log-stream --defer-time 4 --seq-save --match ".*\.hdf5" --match ".*\.fz" ;
-    environment:
-      onezone_url: $onezone_url
-      source_space_name: $source_space_name
-      source_provider: $source_provider
-      api_token: $api_token
-    volumes:
-      - /tmp/onedata/:/onedata/:shared
-      - file-queue:/metadata/queue
-      - monitor:/monitor
-      - $PWD/logs:/metadata
-      - $PWD/ingestion-agent.sh:/usr/local/bin/ingestion-agent.sh
-
-  metadata-extractor:
-    image: groundnuty/whatever:ctaarchive-v1
-    # image source: https://gitlab.in2p3.fr/Frederic.Gillardo1/ctaarchive/
-    stop_signal: SIGUSR1
-    entrypoint: 
-      - /usr/bin/env
-      - sh
-      - -c
-      - >
-        trap "{ exit 0 ; }" SIGUSR1 ;
-        echo "Metadata extractor ready. Waiting for requests..." ;
-        while true ; do 
-        for request in /queue/*.request ; do 
-          [ -e "$$request" ] || { sleep 1 ; continue ; } ;
-          filePath="" ; read filePath <"$$request" ;
-          echo "Requesting metadata $$filePath" ;
-          ls -l /onedata/$$filePath ;
-          onedataextractor /onedata/$$filePath > $${request%.*}.meta_tmp ;
-          cp $${request%.*}.meta_tmp $${request%.*}.meta ;
-          rm "$$request" ;
-        done ; done ;
-    container_name: extractor
-    volumes:
-      - /tmp/onedata/:/onedata/:shared
-      - file-queue:/queue
-      - monitor:/monitor
-
-volumes:
-  file-queue:
-  monitor:
+# Needed to work in Cyfronet
+networks:
+  default:
+    driver: bridge  
+    driver_opts:
+      com.docker.network.driver.mtu: 1400

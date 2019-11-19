@@ -1,5 +1,0 @@
-export onezone_url="release18020-rc11-onezone.release18020-rc11.svc.dev.onedata.uk.to"
-export source_space_name="krk-pirw-par-3-lis-n"
-export source_provider="release18020-rc11-oneprovider-krakow.release18020-rc11.svc.dev.onedata.uk.to"
-export source_oneprovider_version="18.02.0-rc11"
-export api_token="MDAxNWxvY2F00aW9uIG9uZXpvbmUKMDAzMGlkZW500aWZpZXIgZWQ3MGM1YWM2MWQ00MzUyOWRkOGQzZjdmNDMyYzkzMDMKMDAxYWNpZCB00aW1lIDwgMTU3MTc2MDIwMQowMDJmc2lnbmF00dXJlIJOFSVA1hz4TvxNiNTSfiYg00WV1OXahyR3hjXHsdncnyCg"
