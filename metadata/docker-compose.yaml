@@ -2,7 +2,7 @@ version: '3.0'
 
 services:
   oneclient:
-    image: onedata/oneclient:${source_oneprovider_version}
+    image: docker.onedata.org/oneclient:${source_oneprovider_version}
     # image source: https://github.com/onedata/oneclient
     privileged: true
     container_name: oneclient
@@ -39,7 +39,7 @@ services:
       - >
         trap "{ exit 0 ; }" SIGUSR1 ;
         while [ ! -f /monitor/oneclient-ready ] ; do sleep 1 ; done ;
-        ingestion-agent.sh --env --log-stream --defer-time 4 --seq-save --match ".*\.hdf5" --match ".*\.fz" ;
+        ingestion-agent.sh --env --log-stream --defer-time 4  --seq 33882 --match ".*\.hdf5" --match ".*\.fz" ;
     environment:
       onezone_url: $onezone_url
       source_space_name: $source_space_name

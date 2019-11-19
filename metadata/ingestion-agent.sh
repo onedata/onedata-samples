@@ -300,38 +300,74 @@ EOF
 
 
   log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
+  log_filter_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a filter.log; else cat; fi; }
   log_metadata_cmd() { if (( log_metadata )); then $_stdbuf -i0 -o0 -e0 tee -a metadata.log; else cat; fi; }
 
   IGNORE_FILES_INDEX=ignore_forever_files
   touch "$IGNORE_FILES_INDEX"
 
+  process_metadata() {
+      if [ "$1" != "" ]; then
+      IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$1";
+      cfile_id=$(echo $cfile_id | tr -d '|')
+      echo "Requested file metadata: <$cfile_name>"
+      echo "  change stream number: <$cseq>"
+      echo "  path: <$cfile_path>"
+      echo "  id: <$cfile_id>"
+      # queue_name=$(echo "$cfile_path" | tr '/' '_')
+      # echo "$cfile_path" > "queue/$queue_name.request"
+      # while [ ! -f "queue/${queue_name}.meta" ] ; do sleep 1 ; done ;
+      # metadata=$(cat "queue/${queue_name}.meta")
+      # echo "  metadata reponse: $metadata"
+      echo "---"
+      metadata='{"foo":"bar"}'
+      if [ "$metadata" != "" ]; then
+        {
+          IFS= read -rd '' transfer_errors
+          IFS= read -rd '' transfer
+        } < <(
+          {
+            transfer=$(
+            echo "$metadata" | log_metadata_cmd | curl -k -N --tlsv1.2 --fail --show-error --silent -H "X-Auth-Token: $api_token" -H "Content-Type: application/json" -X PUT -d @- "https://$source_provider/api/v3/oneprovider/metadata-id/$cfile_id?metadata_type=json"
+            ); 
+          } 2>&1; printf '\0%s' "$transfer"
+        ) ;
+#             cat "queue/${queue_name}.meta" | log_metadata_cmd | ${_curl[@]} -H "Content-Type: application/json" -X PUT -d @- "https://$source_provider/api/v3/oneprovider/metadata-id/$cfile_id?metadata_type=json"
+        printf "Output:\n${transfer}\n"
+        printf "Errors:\n${transfer_errors}\n"
+        # if [ "$transfer" != "" ] && [ "$transfer" != "null" ]; then
+        # else
+        #   echo "No trasnfer id recived. This request will be retried." ;
+        # fi
+        #rm "queue/${queue_name}.meta"
+      # else 
+      #   else
+      else 
+        echo "Failed to retrive metadata of file $cfile_path. Will try again." ;
+      fi
+      fi
+  }
+  export -f process_metadata
+  export _curl
+  export -f log_metadata_cmd
+  export source_provider
+  export api_token
   check_cache() {
     while true ; do
       sleep $cache_scan_frequency ;
-      while IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id ; do 
-        echo "Requested file metadata: <$cfile_name>"
-        echo "  change stream number: <$cseq>"
-        echo "  path: <$cfile_path>"
-        echo "  id: <$cfile_id>"
-        queue_name=$(echo "$cfile_path" | tr '/' '_')
-        echo "$cfile_path" > "queue/$queue_name.request"
-        while [ ! -f "queue/${queue_name}.meta" ] ; do sleep 1 ; done ;
-        metadata=$(cat "queue/${queue_name}.meta")
-        echo "  metadata reponse: $metadata"
-        echo "---"
-        if [ "$metadata" != "" ]; then
-          cat "queue/${queue_name}.meta" | log_metadata_cmd | ${_curl[@]} -H "Content-Type: application/json" -X PUT -d @- "https://$source_provider/api/v3/oneprovider/metadata-id/$cfile_id?metadata_type=json"
-          # if [ "$transfer" != "" ] && [ "$transfer" != "null" ]; then
-            $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
-          # else
-          #   echo "No trasnfer id recived. This request will be retried." ;
-          # fi
-          rm "queue/${queue_name}.meta"
-        else 
-          echo "Failed to retrive metadata of file $cfile_path. Will try again." ;
-        fi
-        printf "%s\t%s\n" "$cfile_id" "$cfile_path" >> "$IGNORE_FILES_INDEX"
-      done < <($_awk -F $'\t' -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+      while IFS='|' read -r r1 r2 r3 r4 r5 r6 r7 r8 r9 r10; do
+      parallel -d '|' -j10 process_metadata ::: "$r1" "$r2" "$r3" "$r4" "$r5" "$r6" "$r7" "$r8" "$r9" "$r10"
+      if [ "$r1" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r1"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r2" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r2"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r3" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r3"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r4" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r4"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r5" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r5"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r6" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r6"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r7" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r7"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r8" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r8"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r9" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r9"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      if [ "$r10" != "" ] ; then IFS=$'\t' read ctimestamp cfile_path cseq cfile_name cfile_id <<< "$r10"; $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache" ; printf "%s\t%s\t%s\n" "$cseq" "$cfile_id" "$cfile_path" >> "processed_files.log" ; fi
+      done < <($_awk -F $'\t' -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db |  pr -10 -a -t -s'|')
     done
   }
 
@@ -360,11 +396,18 @@ EOF
     fi
   }
   
-  echo -n > ignore_forever_files
+  echo -n > "$IGNORE_FILES_INDEX"
   check_cache &
+  
+  # re-run changess pulling if curl timeouts
   while true ; do
+    # if set, read saved sequence number form the file
     last_seq_func
+    echo "While loop broken. Changes from: <$last_seq>"
+    # read fields form changes stream
     while IFS=$'\t' read seq file_name file_path file_id ; do
+      
+      # try to match the recived file patters
       matched=false
       for filePattern in "${matches[@]}"; do
         echo "Matching file $file_name against pattern $filePattern" 
@@ -377,8 +420,11 @@ EOF
           echo "Failure. file $file_name did not match $filePattern."
         fi
       done
+      # it match was succesfull process file, if not ignore file
       if $matched ; then
-        if ! grep --quiet $file_id "$IGNORE_FILES_INDEX" ; then
+        # if file is already on the ignore list, don't process it
+        file_id="${file_id#file_id=}"
+        if ! grep --quiet "$file_id" "$IGNORE_FILES_INDEX" ; then
           echo "raw: <$seq> <$file_name> <$file_path> <$file_id>"
           seq="${seq#seq=}"
           file_name="${file_name#name=}"
@@ -386,22 +432,23 @@ EOF
           if [ "$file_path" = "" ] ; then
             file_path="MISSING_FILE_PATH"
           fi
-          file_id="${file_id#file_id=}"
           echo "parsed: $seq $file_name $file_path $file_id"
           date_cache="$($_date --date="$defer_time seconds ago" +%s)"
+          
+          # try to update the timestamp of the file in a cache, if file does not exist append it to the cache
           if ! $_awk -F $'\t' -i inplace -v time=$($_date +%s) -v filename="$file_path" 'BEGIN{err=1};match($0, filename) {gsub($1,time); err=0};{print} END {exit err}' "$changes_cache"; then
               date_now="$($_date +%s)"
               change=$(printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$date_now" "$file_path" "$seq" "$file_name" "$file_id")
+              printf "%s\t%s\t%s\n" "$seq" "$file_id" "$file_path" >> "$IGNORE_FILES_INDEX"
               echo "$change" >> "$changes_cache"
               if [[ $debug -eq 1 ]]; then
-                echo "New file added to metadata reques cache: <$file_name>"
+                echo "New file added to metadata requests cache: <$file_name>"
                 echo "  change stream number: <$seq>"
                 echo "  path: <$file_path>"
                 echo "  id: <$file_id>"
                 echo "  If no changes to this file occures for $defer_time [s] its metadata reques will be enqueued."
                 echo ""
               fi
-              $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
           else
               if [[ $debug -eq 1 ]]; then
                 echo "Updated cached file metadata request: <$file_name>"
@@ -411,15 +458,20 @@ EOF
                 echo "  If no changes to this file occures for $defer_time [s] its metadata request will be enqueued."
                 echo ""
               fi
-              $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
           fi
+        else
+          echo "The file file_name=$file_name file_id=$file_id was found on the IGNORE FILES LIST"
         fi
       fi
+      (( seq++ ))
+      last_seq_number="$seq"
       if (( seq_save )); then
-        (( seq++ ))
+        # we want to start again form the next record, not the same
         echo "$seq" > last_seq
       fi
-    done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
+    #done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r -c 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' | log_filter_cmd )
+    #done < <(${_curl[@]} https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.fileMeta.deleted==false) and (.fileMeta.fields.type=="REG") and (.fileMeta.changed==false) )' | log_filter_cmd) 
+    done < <(${_curl[@]} -X POST -d '{ "fileMeta": { "fields": ["name", "type", "deleted"], "always": true }}'  -H 'content-type: application/json' "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.fileMeta.deleted==false) and (.fileMeta.fields.type=="REG") and (.fileMeta.changed==false) )' | log_filter_cmd) 
 
     last_seq_func_verbose=0
   done

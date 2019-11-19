@@ -120,7 +120,7 @@ main() {
   # Default values
   seq_save=0
   log_stream=0
-  defer_time=180
+  defer_time=5
   cache_scan_frequency=2
   debug=0
 
@@ -294,12 +294,12 @@ EOF
   done
   echo ""
 
-  if [[ -v ${targert_provider_id} ]]; then
+  if [[ -z ${targert_provider_id} ]]; then
     echo "ERROR: <$target_provider> did not match any of the providers that supports the space <$space_name>"
     exit 1
   fi
 
-  if [[ -v ${source_provider_id} ]]; then
+  if [[ -z ${source_provider_id} ]]; then
     echo "ERROR: <$source_provider> did not match any of the providers that supports the space <$space_name>"
     exit 1
   fi
@@ -317,6 +317,9 @@ EOF
     All changess will be replicated to provider <$target_provider> that also supports space <$space_name>
 
 EOF
+  echo "targert_provider_id=$targert_provider_id"
+  echo "source_provider_id=$source_provider_id"
+
 
 
   log_steam_cmd() { if (( log_stream )); then $_stdbuf -i0 -o0 -e0 tee -a stream.log; else cat; fi; }
@@ -331,15 +334,28 @@ EOF
         echo "  path: <$cfile_path>"
         echo "  id: <$cfile_id>"
         echo "${_curl[@]} -H 'Content-type: application/json' -X POST \"https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id\"" | log_replicas_cmd > /dev/null
-        transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | xargs -0 printf "%s\n" | log_replicas_cmd | jq -r ".transferId")
+        #transfer=$(${_curl[@]} -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | xargs -0 printf "%s\n" | log_replicas_cmd | jq -r ".transferId")
+        {
+          IFS= read -rd '' transfer_errors
+          IFS= read -rd '' transfer
+        } < <(
+          {
+            transfer=$(
+            ${_curl[@]} -vv -H 'Content-type: application/json' -X POST "https://$source_provider/api/v3/oneprovider/replicas-id/$cfile_id?provider_id=$targert_provider_id" | xargs -0 printf "%s\n" | log_replicas_cmd | jq -r ".transferId"
+            ); 
+          } 2>&1; printf '\0%s' "$transfer"
+        ) ;
+
         echo "  replication transfer id: $transfer"
         echo ""
         if [ "$transfer" != "" ] && [ "$transfer" != "null" ]; then
           $_awk -F $'\t' -i inplace -v filename="$cfile_path" '$2 != filename' "$changes_cache"
         else
           echo "No trasnfer id recived. This request will be retried." ;
+          printf "Errors:\n${transfer_errors}\n"
         fi
       done < <($_awk -F $'\t' -v defer_time=$defer_time -v date_now="$($_date +%s)" '(date_now - $1) > defer_time {print}' cache.db)
+
     done
   }
 
@@ -369,8 +385,17 @@ EOF
   }
 
   check_cache &
+
+
+  stream_number=0;
+  echo ${_curl[@]} -H 'Content-type: application/json' -X POST -d "{}"  -vv  "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}"
+  
   while true ; do
+
+  ((stream_number++))
+    echo "defer_time=${defer_time}. The curl stream <${stream_number}> has started at: $($_date)."
     last_seq_func
+
     while IFS=$'\t' read seq file_name file_path file_id ; do
       echo "raw: <$seq> <$file_name> <$file_path> <$file_id>"
       seq="${seq#seq=}"
@@ -410,8 +435,9 @@ EOF
         (( seq++ ))
         echo "$seq" > last_seq
       fi
-    done < <(${_curl[@]} "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?timeout=60000&${last_seq}" 2>/dev/null | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
-
+    done < <(${_curl[@]} -vv -H 'Content-type: application/json' -X POST -d '{"fileMeta":{ "always": true, "fields":["name","type"] }, "fileLocation":{}}' "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.fileMeta.fields.type=="REG") and (.fileMeta.deleted!=true)) | "seq=\(.seq)\tname=\(.fileMeta.fields.name)\tfile_path=\(.filePath)\tfile_id=\(.fileId)"' )
+    #done < <(${_curl[@]} -H 'Content-type: application/json' -X POST -d "{}"  -vv  "https://$source_provider/api/v3/oneprovider/changes/metadata/$space_id?${last_seq}" | log_steam_cmd | $_stdbuf -i0 -o0 -e0 jq -r 'select((.deleted==false ) and (.changes.type=="REG")) | "seq=\(.seq)\tname=\(.name)\tfile_path=\(.file_path)\tfile_id=\(.file_id)"' )
+    echo "The curl stream <${stream_number}> has ended at: $($_date)."
     last_seq_func_verbose=0
   done
 }
