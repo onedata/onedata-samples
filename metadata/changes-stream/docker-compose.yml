@@ -1,0 +1,19 @@
+version: '2'
+
+services:
+  all:
+    build: .
+    entrypoint: /app/run.sh
+    # Uncomment 4 lines bellow to debug the container
+    # entrypoint: /usr/bin/env
+    # command: bash
+    # stdin_open: true
+    # tty: true
+    privileged: true
+    volumes:
+      # For the purpose of testing and development mount the processing script
+      - $PWD/run.py:/app/run-dev.py
+      # Data needs to be mounted in /data for direct IO to work
+      - /data:/data
+    env_file:
+    - .env
