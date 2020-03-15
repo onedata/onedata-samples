@@ -1,7 +1,7 @@
 FROM gitlab-registry.in2p3.fr/cta-lapp/cta-archive AS extractor
 
 # Install Oneclient 
-FROM groundnuty/whatever:oneclient-19.02.1-99fa11a63b07
+FROM onedata/oneclient:19.02.1
 
 # Copy CTA matadata extration tools from the image
 WORKDIR /app
