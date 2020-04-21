@@ -24,15 +24,38 @@ sourceSpaceName=os.environ['SPACE_NAME']
 apiToken=os.environ['ONECLIENT_ACCESS_TOKEN']
 sourceProvider=os.environ['ONECLIENT_PROVIDER_HOST']
 insecure=os.environ['ONECLIENT_INSECURE']
-lastSeq=os.environ['LAST_SEQUENCE']
+if 'LAST_SEQUENCE' in os.environ:
+  try:
+    initialStartingSequence=int(os.environ['LAST_SEQUENCE'])
+  except ValueError:
+    initialStartingSequence=None
+else:
+  initialStartingSequence=None
+
+# Number od worker threads
+numberOfWorkers=3
 
 # Space id will be inferred from Onezone based on space name
 spaceId=""
+
+myChangesListener = None
 
 # Initialize a Queue for threads to communicate. 
 # During tests the queue never reached size more then 10k
 BUF_SIZE = 1000000
 q = Queue.Queue(BUF_SIZE)
+
+# Map translating random thread ids to sequential worker numbers
+threadIdToWorkerNumberMap={}
+
+# List of sequence number of each worker thread
+threadsSequenceNumbers=[None]*numberOfWorkers
+
+# List of filehandles for threads to save their state
+fileHandles = []
+
+# timmer
+fileHandlesTimer = None
 
 # Get spaceId from the space name
 with requests.Session() as session:
@@ -56,31 +79,40 @@ with requests.Session() as session:
 
 # Changes stream is consumed in a separate thread
 class ChangesListener(threading.Thread):
-    def __init__(self, group=None, target=None, name=None,
+    def __init__(self, group=None, target=None, name=None, startingSequenceNumber=None,
                  args=(), kwargs=None, verbose=None):
-        super(ChangesListener,self).__init__()
-        self.target = target
-        self.name = name
+        super(ChangesListener,self).__init__(target=target, name=name, verbose=verbose)
+        self.args = args
+        self.kwargs = kwargs
+        self.startingSequenceNumber = startingSequenceNumber
 
     def run(self):
       # Start listening the changes API
       changesJSON='{ "fileMeta": { "fields": ["name", "type", "deleted"], "always": true }}'
+
+      # Supply extra argument in the url if events should start from a designated sequence
+      if self.startingSequenceNumber == None:
+        urlTemplate = "https://{}/api/v3/oneprovider/changes/metadata/{}?timeout=60000"
+      else:
+        urlTemplate = "https://{}/api/v3/oneprovider/changes/metadata/{}?timeout=60000&last_seq={}"
+      print(self.startingSequenceNumber,urlTemplate)
       while True:
         with requests.Session() as session:
           session.headers.update({'X-Auth-Token': apiToken })
           session.headers.update({'content-type': 'application/json' })
-          url="https://{}/api/v3/oneprovider/changes/metadata/{}?timeout=60000&last_seq={}".format(sourceProvider,spaceId,lastSeq)
+          url=urlTemplate.format(sourceProvider,spaceId,self.startingSequenceNumber)
           response = session.post(url,data=changesJSON,verify=False,stream=True)
 
           lines = response.iter_lines()
           for line in lines:
             if line:
                 decoded_line = json.loads(line.decode('utf-8'))
+                self.startingSequenceNumber = decoded_line["seq"]
                 if decoded_line["fileMeta"]["changed"] and not decoded_line["fileMeta"]["deleted"]:
                   filePath=decoded_line['filePath']#.decode('utf-8')
                   if filePath.lower().endswith("hdf5"):
-                    q.put(filePath)
-                    l.debug("Putting file {} to the queue".format(filePath))
+                    q.put([self.startingSequenceNumber,filePath])
+                    l.debug("Putting file of seq={}, {} to the queue".format(self.startingSequenceNumber,filePath))
       return
 
 # Process items in the queue
@@ -91,13 +123,27 @@ def traverse(root_path):
       time.sleep(1)
       print("No items in a queue.")
     else:
-      with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+      with concurrent.futures.ThreadPoolExecutor(max_workers=numberOfWorkers) as executor:
         while not q.empty():
-          executor.submit(processPath, q.get(), root_path)
+          try:
+            anItem=q.get()
+            sequenceNumber = anItem[0]
+            filePath = anItem[1]
+            executor.submit(processPath, sequenceNumber, filePath, root_path)
+          except KeyboardInterrupt:
+            executor.shutdown(wait=False)
+            myChangesListener.exit()
+            if fileHandlesTimer: fileHandlesTimer.cancel()
 
 # Process a single path
-def processPath(path,root_path):
+def processPath(sequenceNumber, path,root_path):
   try:
+    threadId = threading.current_thread().ident
+    if not threadId in threadIdToWorkerNumberMap:
+      threadIdToWorkerNumberMap[threadId]=len(threadIdToWorkerNumberMap)
+    #l.info("threadId={}, sequenceNumber={}, file={}".format(threadId,sequenceNumber,fileHandles[threadIdToWorkerNumberMap[threadId]]))
+    threadsSequenceNumbers[threadIdToWorkerNumberMap[threadId]]=sequenceNumber
+
     if path.endswith('.hdf5'):
       wholeStart = time.time()
       l.debug("Opening file: {}".format(path))
@@ -129,7 +175,64 @@ def processPath(path,root_path):
     else:
       l.debug("file does not match regex, omitting {}".format(path))
   except Exception as e:
+    print("ERRROR!")
     l.info(e)
+
+# Ensure existence of structure of persistent direstories
+statePersistencePath="./persistence/state"
+if not os.path.exists(statePersistencePath):
+    os.makedirs(statePersistencePath)
+
+# If no starting sequence number was given try to get it from saved states
+if initialStartingSequence == None:
+  lowestSequenceNumber=None
+  for stateFilePath in os.listdir(statePersistencePath):
+    aFileHandle = open(os.path.join(statePersistencePath,stateFilePath),"r")
+    try:
+      # the file might be empty, corrupted, or content might not be a number
+      savedSequence = int(aFileHandle.read())
+    except ValueError:
+      continue
+    aFileHandle.close()
+    if lowestSequenceNumber == None:
+      lowestSequenceNumber = savedSequence
+    else:
+      if lowestSequenceNumber > savedSequence:
+        lowestSequenceNumber = savedSequence
+
+  initialStartingSequence = lowestSequenceNumber
+
+# If values is None, then there were not files to load the saved state from
+if initialStartingSequence != None:
+  firstFileHandle = open(os.path.join(statePersistencePath,"{}.seq".format(0)),"w")
+  # Save the state in case the script crashes early
+  firstFileHandle.write(str(initialStartingSequence))
+  firstFileHandle.close()
+
+# Remove all the state files except the first
+for stateFilePath in os.listdir(statePersistencePath):
+  if stateFilePath != "0.seq":
+    os.remove(os.path.join(statePersistencePath,stateFilePath))
+
+for i in range(0,numberOfWorkers):
+  # mode 'a' was chosen, not to overwrite the value of the '0.seq'
+  fileHandles.append(open(os.path.join(statePersistencePath,"{}.seq".format(i)),"a"))
+
+def flushFileHandles():
+    for i in range(0,len(fileHandles)):
+      aSequenceNumber=threadsSequenceNumbers[i]
+      if aSequenceNumber != None:
+        fileHandles[i].truncate(0)
+        # temporary save of a sequence so the value does not change between write and when log message if printed
+        fileHandles[i].write(str(aSequenceNumber))
+        fileHandles[i].flush()
+        l.info("Saving sequence={} of worker={} to file={}, ".format(threadsSequenceNumbers[i],i,fileHandles[i]))
+    # TODO: fix it so that a task is scheduled properly!
+    fileHandlesTimer = threading.Timer(2.0, flushFileHandles)
+    fileHandlesTimer.start()
+
+fileHandlesTimer = threading.Timer(2.0, flushFileHandles)
+fileHandlesTimer.start()
 
 # Initialize OnedataFS
 odfs = OnedataFS(sourceProvider, apiToken, insecure=True, force_direct_io=True)
@@ -139,8 +242,8 @@ l.debug(odfs.listdir('/'))
 space = odfs.opendir('/{}'.format(sourceSpaceName))
 
 # Start filling up the queue with files
-p = ChangesListener(name='producer')
-p.start()
+myChangesListener = ChangesListener(name='producer',startingSequenceNumber=initialStartingSequence)
+myChangesListener.start()
 
 # Process items in the queue
 traverse(odfs)
@@ -148,4 +251,9 @@ traverse(odfs)
 # Close OnedataFS
 l.info("Processing ended. Closing onedatafs.")
 odfs.close()
+
+# Close workers filehandles
+for i in range(0,numberOfWorkers):
+  fileHandles[i].close()
+
 sys.exit(0)
