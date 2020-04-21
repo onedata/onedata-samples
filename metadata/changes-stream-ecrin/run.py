@@ -144,30 +144,29 @@ def processPath(sequenceNumber, path,root_path):
     #l.info("threadId={}, sequenceNumber={}, file={}".format(threadId,sequenceNumber,fileHandles[threadIdToWorkerNumberMap[threadId]]))
     threadsSequenceNumbers[threadIdToWorkerNumberMap[threadId]]=sequenceNumber
 
-    if path.endswith('.hdf5'):
+    if path.endswith('.json'):
       wholeStart = time.time()
       l.debug("Opening file: {}".format(path))
-      start = time.time() ; file = root_path.openbin(path,mode="r+") ; end = time.time() ; fileOpenTime=(end - start)
-      fileName = file.path
-      filePath = path
+      start = time.time() ; file = root_path.open(path,mode="r") ; end = time.time() ; fileOpenTime=(end - start)
+      fileName = file.name
+      filePath = file
       l.debug("Getting size of file: {}".format(path))
       start = time.time() ; size = odfs.getinfo(fileName).size ; end = time.time() ; filegetInfoTime=(end - start)
       l.debug("Size of file {} is: {}".format(path,size))
       if size > 0:
-        l.debug("Extracting metadata from file: {}".format(path))
-        start = time.time() ; decoded_json = MetaDataExtractorHdf5(file).to_json() ; end = time.time() ; metadataExtractTime=(end - start)
-        l.debug("Attaching metadata to: {}".format(path))
+        l.debug("Reading file: {}".format(path))
+        start = time.time() ; decoded_json = json.loads(file.read()) ; end = time.time() ; metadataExtractTime=(end - start)
+        l.debug("Attaching metadata to: {}".format(file))
         start = time.time() ; odfs.setxattr(fileName,"onedata_json",json.dumps(decoded_json)) ; end = time.time() ; metadataSetOnedataFSTime=(end - start)
         start = time.time() ; file.close() ; end = time.time() ; fileCloseTime=(end - start)
         start = time.time() ; accessType=odfs.getxattr(fileName,b"org.onedata.access_type") ; end = time.time() ; getAccessTypeTime=(end - start)
         l.debug("File={}, Access type={}, Metadata extract time={}, Metadata set with OnedataFS={}".format(filePath,accessType,metadataExtractTime,metadataSetOnedataFSTime))
         jsonLog = {} ;
         jsonLog["file"] = fileName ; jsonLog["metadataExtrationTime"] = metadataExtractTime ; jsonLog["accessType"] = str(accessType) ; jsonLog["metadataSettingTime"] = metadataSetOnedataFSTime ;
-        jsonLog['getAccessTypeTime'] = getAccessTypeTime ; jsonLog['filegetInfoTime'] = filegetInfoTime ; jsonLog['fileOpenTime'] = fileOpenTime ;  
-        jsonLog['fileCloseTime'] = fileCloseTime ; 
+        jsonLog['getAccessTypeTime'] = getAccessTypeTime ; jsonLog['filegetInfoTime'] = filegetInfoTime ; jsonLog['fileOpenTime'] = fileOpenTime ;
+        jsonLog['listDirTime'] = listDirTime ; jsonLog['isDirectoryTime'] = isDirectoryTime ; jsonLog['fileCloseTime'] = fileCloseTime ;
         wholeEnd= time.time()
-        jsonLog['wholeTime'] = wholeEnd - wholeStart 
-        jsonLog['queueSize'] = q.qsize()
+        jsonLog['wholeTime'] = wholeEnd - wholeStart
         l.info("jsonLog: {}".format(json.dumps(jsonLog)))
       else:
         start = time.time() ; file.close() ; end = time.time() ; fileCloseTime=(end - start)
