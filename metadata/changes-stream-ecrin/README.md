@@ -1,8 +1,8 @@
 # Metadata ingestion from the space changes stream
 
-With this example you can upload `*.hdf5` files into Onedata and have their metadata automatically uploaded into Onedata.
+With this example you process files coming form the space changes stream files and have their metadata automatically uploaded into Onedata.
 
-Example files with metadata is `gamma_test_generated_200.hdf5`.
+In this simple example, the whole content of the file is attached as metadata of the file.
 
 Before your run, please set all the variables in `.env` to correct values.
 
