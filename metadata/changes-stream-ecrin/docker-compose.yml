@@ -15,5 +15,7 @@ services:
       - $PWD/run.py:/app/run-dev.py
       # Data needs to be mounted in /data for direct IO to work
       - /data:/data
+      # Space changes stream sequence number persistence
+      - "$PWD/persistence/state:/persistence/state"
     env_file:
     - .env
